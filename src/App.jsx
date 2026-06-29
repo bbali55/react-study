@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-const API = 'https://fastapi-study-1.onrender.com'
+const API = 'https://fastapi-study-production.up.railway.app'
 
 function Login({ onLogin }) {
   const [username, setUsername] = useState('')
@@ -151,12 +151,12 @@ function Items({ token, onLogout }) {
           </button>
         </div>
         <div className="flex gap-2 mb-6">
-          <label className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 cursor-pointer">
+          <label className="bg-pink-500 text-white px-4 py-2 rounded hover:bg-pink-900 cursor-pointer">
             엑셀 업로드
             <input type="file" className="hidden" onChange={uploadExcel} />
           </label>
           <button
-            className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+            className="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-900"
             onClick={downloadExcel}
           >
             엑셀 다운로드
