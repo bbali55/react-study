@@ -123,7 +123,7 @@ function DragSelectContainer({ children, items, selectedIds, setSelectedIds }) {
   const [box, setBox] = useState(null)
 
   function onMouseDown(e) {
-    if (e.target.closest('[data-row]')) return
+    if (e.button !== 0) return
     const rect = containerRef.current.getBoundingClientRect()
     dragBox.current = { startX: e.clientX - rect.left, startY: e.clientY - rect.top }
     setBox(null)
