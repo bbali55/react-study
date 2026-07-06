@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { IconFileTypePdf, IconPhoto, IconFileSpreadsheet, IconFileWord, IconFileText, IconFile } from '@tabler/icons-react'
 
 //const API = 'http://127.0.0.1:8000'
 const API = 'https://fastapi-study-production.up.railway.app'
-
 
 function Register({ onBack }) {
   const [username, setUsername] = useState('')
@@ -71,24 +70,9 @@ function Dashboard({ token, onLogout }) {
     <div className="min-h-screen bg-gray-100">
       <div className="bg-white border-b border-gray-200 px-8 py-3 flex justify-between items-center">
         <div className="flex gap-4">
-          <button
-            className={`px-4 py-2 rounded font-medium ${tab==='items' ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-800'}`}
-            onClick={() => setTab('items')}
-          >
-            아이템 목록
-          </button>
-          <button
-            className={`px-4 py-2 rounded font-medium ${tab==='files' ? 'bg-purple-500 text-white' : 'text-gray-500 hover:text-gray-800'}`}
-            onClick={() => setTab('files')}
-          >
-            파일 목록
-          </button>
-          <button
-            className={`px-4 py-2 rounded font-medium ${tab==='etc' ? 'bg-green-500 text-white' : 'text-gray-500 hover:text-gray-800'}`}
-            onClick={() => setTab('etc')}
-          >
-            기타 목록
-          </button>
+          <button className={`px-4 py-2 rounded font-medium ${tab==='items' ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-800'}`} onClick={() => setTab('items')}>아이템 목록</button>
+          <button className={`px-4 py-2 rounded font-medium ${tab==='files' ? 'bg-purple-500 text-white' : 'text-gray-500 hover:text-gray-800'}`} onClick={() => setTab('files')}>파일 목록</button>
+          <button className={`px-4 py-2 rounded font-medium ${tab==='etc' ? 'bg-green-500 text-white' : 'text-gray-500 hover:text-gray-800'}`} onClick={() => setTab('etc')}>기타 목록</button>
         </div>
         <button className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600" onClick={onLogout}>로그아웃</button>
       </div>
@@ -97,6 +81,107 @@ function Dashboard({ token, onLogout }) {
         {tab === 'files' && <FilesTab token={token} />}
         {tab === 'etc' && <div className="text-gray-400 text-center mt-20">기타 목록 준비 중...</div>}
       </div>
+    </div>
+  )
+}
+
+function useSelectable(items) {
+  const [selectedIds, setSelectedIds] = useState([])
+  const lastClickedIdx = useRef(null)
+
+  function handleClick(e, id, idx) {
+    if (e.shiftKey && lastClickedIdx.current !== null) {
+      const start = Math.min(lastClickedIdx.current, idx)
+      const end = Math.max(lastClickedIdx.current, idx)
+      const rangeIds = items.slice(start, end + 1).map(i => i.id)
+      setSelectedIds(prev => {
+        const merged = new Set([...prev, ...rangeIds])
+        return [...merged]
+      })
+    } else if (e.ctrlKey || e.metaKey) {
+      setSelectedIds(prev =>
+        prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+      )
+      lastClickedIdx.current = idx
+    } else {
+      setSelectedIds([id])
+      lastClickedIdx.current = idx
+    }
+  }
+
+  function clearSelection() {
+    setSelectedIds([])
+    lastClickedIdx.current = null
+  }
+
+  return { selectedIds, setSelectedIds, handleClick, clearSelection }
+}
+
+function DragSelectContainer({ children, items, selectedIds, setSelectedIds }) {
+  const containerRef = useRef(null)
+  const dragBox = useRef(null)
+  const [box, setBox] = useState(null)
+
+  function onMouseDown(e) {
+    if (e.target.closest('[data-row]')) return
+    const rect = containerRef.current.getBoundingClientRect()
+    dragBox.current = { startX: e.clientX - rect.left, startY: e.clientY - rect.top }
+    setBox(null)
+
+    function onMove(e) {
+      const r = containerRef.current.getBoundingClientRect()
+      const cur = { x: e.clientX - r.left, y: e.clientY - r.top }
+      const b = {
+        left: Math.min(dragBox.current.startX, cur.x),
+        top: Math.min(dragBox.current.startY, cur.y),
+        width: Math.abs(cur.x - dragBox.current.startX),
+        height: Math.abs(cur.y - dragBox.current.startY),
+      }
+      setBox(b)
+
+      const rows = containerRef.current.querySelectorAll('[data-row]')
+      const selected = []
+      rows.forEach(row => {
+        const rr = row.getBoundingClientRect()
+        const cr = containerRef.current.getBoundingClientRect()
+        const rowLeft = rr.left - cr.left
+        const rowTop = rr.top - cr.top
+        const rowRight = rowLeft + rr.width
+        const rowBottom = rowTop + rr.height
+        const boxRight = b.left + b.width
+        const boxBottom = b.top + b.height
+        if (rowLeft < boxRight && rowRight > b.left && rowTop < boxBottom && rowBottom > b.top) {
+          selected.push(Number(row.dataset.id))
+        }
+      })
+      setSelectedIds(selected)
+    }
+
+    function onUp() {
+      setBox(null)
+      dragBox.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', userSelect: 'none' }} onMouseDown={onMouseDown}>
+      {children}
+      {box && (
+        <div style={{
+          position: 'absolute',
+          left: box.left, top: box.top,
+          width: box.width, height: box.height,
+          background: 'rgba(59,130,246,0.15)',
+          border: '1px solid rgba(59,130,246,0.5)',
+          pointerEvents: 'none',
+          zIndex: 10,
+        }} />
+      )}
     </div>
   )
 }
@@ -114,8 +199,8 @@ function ItemsTab({ token }) {
   const [sortKey, setSortKey] = useState(null)
   const [sortDir, setSortDir] = useState(1)
   const [dragSrc, setDragSrc] = useState(null)
-  const [selectedItem, setSelectedItem] = useState(null)
-
+  const sortedItems = [...items].sort((a, b) => sortKey ? (a[sortKey] > b[sortKey] ? sortDir : -sortDir) : 0)
+  const { selectedIds, setSelectedIds, handleClick, clearSelection } = useSelectable(sortedItems)
 
   useEffect(() => { fetchItems() }, [])
 
@@ -131,11 +216,10 @@ function ItemsTab({ token }) {
     }).then(() => { setNewItem(''); fetchItems() })
   }
 
-  function deleteItem(id) {
-    fetch(`${API}/items/${id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    }).then(() => fetchItems())
+  function deleteSelectedItems() {
+    Promise.all(selectedIds.map(id =>
+      fetch(`${API}/items/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
+    )).then(() => { clearSelection(); fetchItems() })
   }
 
   function uploadExcel(e) {
@@ -165,7 +249,7 @@ function ItemsTab({ token }) {
     const startWidth = parseInt(columns[i].width)
     function onMove(e) {
       const newWidth = Math.max(60, startWidth + e.clientX - startX) + 'px'
-      setColumns(prev => prev.map((col, idx) => idx===i ? {...col, width: newWidth} : col))
+      setColumns(prev => prev.map((col, idx) => idx === i ? { ...col, width: newWidth } : col))
     }
     function onUp() {
       window.removeEventListener('mousemove', onMove)
@@ -181,11 +265,11 @@ function ItemsTab({ token }) {
         <input className="border rounded p-2 flex-1" value={newItem} onChange={e => setNewItem(e.target.value)} placeholder="아이템 이름" />
         <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" onClick={addItem}>추가</button>
         <button
-          className={`px-4 py-2 rounded ${selectedItem ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-gray-300 text-gray-400 cursor-not-allowed'}`}
-          onClick={() => selectedItem && deleteItem(selectedItem.id)}
-          disabled={!selectedItem}
+          className={`px-4 py-2 rounded ${selectedIds.length > 0 ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-gray-300 text-gray-400 cursor-not-allowed'}`}
+          onClick={() => selectedIds.length > 0 && deleteSelectedItems()}
+          disabled={selectedIds.length === 0}
         >
-          삭제
+          삭제 {selectedIds.length > 0 && `(${selectedIds.length})`}
         </button>
         <label className="bg-pink-500 text-white px-4 py-2 rounded hover:bg-pink-600 cursor-pointer">
           엑셀 업로드
@@ -193,54 +277,53 @@ function ItemsTab({ token }) {
         </label>
         <button className="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700" onClick={downloadExcel}>엑셀 다운로드</button>
       </div>
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden text-sm select-none">
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden text-sm">
         <div className="flex bg-gray-50 border-b border-gray-200">
           {columns.map((col, i) => (
             <div
               key={col.key}
-              className={`px-3 py-2 text-gray-500 font-medium flex items-center gap-1 cursor-pointer hover:text-gray-800 ${sortKey===col.key?'text-blue-500':''}`}
-              style={{width: col.width, minWidth: col.width, position: 'relative'}}
+              className={`px-3 py-2 text-gray-500 font-medium flex items-center gap-1 cursor-pointer hover:text-gray-800 ${sortKey === col.key ? 'text-blue-500' : ''}`}
+              style={{ width: col.width, minWidth: col.width, position: 'relative' }}
               draggable
               onDragStart={() => setDragSrc(i)}
               onDragOver={e => e.preventDefault()}
               onDrop={() => {
                 const newCols = [...columns]
-                const tmp = newCols[dragSrc]; newCols[dragSrc]=newCols[i]; newCols[i]=tmp
+                const tmp = newCols[dragSrc]; newCols[dragSrc] = newCols[i]; newCols[i] = tmp
                 setColumns(newCols); setDragSrc(null)
               }}
               onClick={() => {
-                if (col.key==='del') return
-                if (sortKey===col.key) setSortDir(d => d*-1)
+                if (sortKey === col.key) setSortDir(d => d * -1)
                 else { setSortKey(col.key); setSortDir(1) }
               }}
             >
               {col.label}
-              {col.key!=='del' && <span className="text-xs text-gray-300">{sortKey===col.key ? (sortDir===1?'▲':'▼') : '⇅'}</span>}
-              <div
-                style={{position:'absolute', right:0, top:0, bottom:0, width:'4px', cursor:'col-resize', background:'transparent'}}
-                onMouseDown={e => startResize(e, i)}
-                onClick={e => e.stopPropagation()}
-              />
+              <span className="text-xs text-gray-300">{sortKey === col.key ? (sortDir === 1 ? '▲' : '▼') : '⇅'}</span>
+              <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '4px', cursor: 'col-resize', background: 'transparent' }}
+                onMouseDown={e => startResize(e, i)} onClick={e => e.stopPropagation()} />
             </div>
           ))}
         </div>
-        {[...items].sort((a,b) => sortKey&&sortKey!=='del' ? (a[sortKey]>b[sortKey]?sortDir:-sortDir) : 0).map(item => (
-          <div key={item.id} 
-            className={`flex items-center cursor-pointer ${selectedItem?.id === item.id ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
-            onClick={() => setSelectedItem(item)}
-          >  
-            {columns.map(col => (
-              <div key={col.key} className="px-3 py-2 overflow-hidden text-ellipsis whitespace-nowrap" style={{width: col.width, minWidth: col.width}}>
-                {col.key==='name'     && <span>{item.name}</span>}
-                {col.key==='category' && <span className="text-gray-500">{item.category}</span>}
-                {col.key==='price'    && <span className="text-gray-500">{item.price}원</span>}
-                {col.key==='quantity' && <span className="text-gray-500">{item.quantity}개</span>}
-                {col.key==='date'     && <span className="text-gray-500">{item.date}</span>}
-                {col.key==='del'      && <button className="border border-gray-300 rounded px-2 py-1 text-xs text-red-400 hover:bg-red-50" onClick={() => deleteItem(item.id)}>삭제</button>}
-              </div>
-            ))}
-          </div>
-        ))}
+        <DragSelectContainer items={sortedItems} selectedIds={selectedIds} setSelectedIds={setSelectedIds}>
+          {sortedItems.map((item, idx) => (
+            <div
+              key={item.id}
+              data-row data-id={item.id}
+              className={`flex items-center cursor-pointer border-b border-gray-100 ${selectedIds.includes(item.id) ? 'bg-blue-100' : 'hover:bg-gray-50'}`}
+              onClick={e => handleClick(e, item.id, idx)}
+            >
+              {columns.map(col => (
+                <div key={col.key} className="px-3 py-2 overflow-hidden text-ellipsis whitespace-nowrap" style={{ width: col.width, minWidth: col.width }}>
+                  {col.key === 'name'     && <span>{item.name}</span>}
+                  {col.key === 'category' && <span className="text-gray-500">{item.category}</span>}
+                  {col.key === 'price'    && <span className="text-gray-500">{item.price}원</span>}
+                  {col.key === 'quantity' && <span className="text-gray-500">{item.quantity}개</span>}
+                  {col.key === 'date'     && <span className="text-gray-500">{item.date}</span>}
+                </div>
+              ))}
+            </div>
+          ))}
+        </DragSelectContainer>
       </div>
     </div>
   )
@@ -257,10 +340,51 @@ function FilesTab({ token }) {
   const [sortDir, setSortDir] = useState(1)
   const [dragSrc, setDragSrc] = useState(null)
   const [preview, setPreview] = useState(null)
-  const [selectedFile, setSelectedFile] = useState(null)
-
+  const sortedFiles = [...files].sort((a, b) => sortKey ? (a[sortKey] > b[sortKey] ? sortDir : -sortDir) : 0)
+  const { selectedIds, setSelectedIds, handleClick, clearSelection } = useSelectable(sortedFiles)
 
   useEffect(() => { fetchFiles() }, [])
+
+  function fetchFiles() {
+    fetch(`${API}/files`, { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(res => res.json()).then(data => setFiles(data))
+  }
+
+  function uploadFile(e) {
+    const file = e.target.files[0]
+    const formData = new FormData()
+    formData.append('file', file)
+    fetch(`${API}/upload-file`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData
+    }).then(() => { fetchFiles(); e.target.value = '' })
+  }
+
+  function downloadFile(id, filename) {
+    fetch(`${API}/download-file/${id}`, { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(data => {
+        fetch(data.url).then(res => res.blob()).then(blob => {
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url; a.download = filename; a.click()
+        })
+      })
+  }
+
+  function downloadSelectedFiles() {
+    selectedIds.forEach(id => {
+      const file = files.find(f => f.id === id)
+      if (file) downloadFile(file.id, file.filename)
+    })
+  }
+
+  function deleteSelectedFiles() {
+    Promise.all(selectedIds.map(id =>
+      fetch(`${API}/delete-file/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
+    )).then(() => { clearSelection(); fetchFiles(); setPreview(null) })
+  }
 
   function startResize(e, i) {
     e.preventDefault()
@@ -268,7 +392,7 @@ function FilesTab({ token }) {
     const startWidth = parseInt(columns[i].width)
     function onMove(e) {
       const newWidth = Math.max(60, startWidth + e.clientX - startX) + 'px'
-      setColumns(prev => prev.map((col, idx) => idx===i ? {...col, width: newWidth} : col))
+      setColumns(prev => prev.map((col, idx) => idx === i ? { ...col, width: newWidth } : col))
     }
     function onUp() {
       window.removeEventListener('mousemove', onMove)
@@ -298,54 +422,6 @@ function FilesTab({ token }) {
     return contentType
   }
 
-  function fetchFiles() {
-    fetch(`${API}/files`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    }).then(res => res.json()).then(data => setFiles(data))
-  }
-
-  function uploadFile(e) {
-    const file = e.target.files[0]
-    const formData = new FormData()
-    formData.append('file', file)
-    fetch(`${API}/upload-file`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
-      body: formData
-    }).then(() => { fetchFiles(); e.target.value = '' })
-  }
-
-  function downloadFile(id, filename) {
-    fetch(`${API}/download-file/${id}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        fetch(data.url)
-          .then(res => res.blob())
-          .then(blob => {
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url; a.download = filename; a.click()
-          })
-      })
-  }
-
-  function previewFile(file) {
-    if (file.content_type?.includes('image')) {
-      setPreview({ url: file.url, filename: file.filename })
-    } else {
-      setPreview(null)
-    }
-  }
-
-  function deleteFile(id, publicId) {
-    fetch(`${API}/delete-file/${id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    }).then(() => { fetchFiles(); setSelectedFile(null) })
-  }
-
   return (
     <div className="max-w-4xl mx-auto">
       <div className="flex gap-2 mb-4">
@@ -354,66 +430,69 @@ function FilesTab({ token }) {
           <input type="file" className="hidden" onChange={uploadFile} />
         </label>
         <button
-          className={`px-4 py-2 rounded ${selectedFile ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-gray-300 text-gray-400 cursor-not-allowed'}`}
-          onClick={() => selectedFile && downloadFile(selectedFile.id, selectedFile.filename)}
-          disabled={!selectedFile}
+          className={`px-4 py-2 rounded ${selectedIds.length > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-gray-300 text-gray-400 cursor-not-allowed'}`}
+          onClick={() => selectedIds.length > 0 && downloadSelectedFiles()}
+          disabled={selectedIds.length === 0}
         >
-          파일 다운로드
+          다운로드 {selectedIds.length > 0 && `(${selectedIds.length})`}
         </button>
         <button
-          className={`px-4 py-2 rounded ${selectedFile ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-gray-300 text-gray-400 cursor-not-allowed'}`}
-          onClick={() => selectedFile && deleteFile(selectedFile.id, selectedFile.public_id)}
-          disabled={!selectedFile}
+          className={`px-4 py-2 rounded ${selectedIds.length > 0 ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-gray-300 text-gray-400 cursor-not-allowed'}`}
+          onClick={() => selectedIds.length > 0 && deleteSelectedFiles()}
+          disabled={selectedIds.length === 0}
         >
-            파일 삭제
+          삭제 {selectedIds.length > 0 && `(${selectedIds.length})`}
         </button>
       </div>
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden text-sm select-none">
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden text-sm">
         <div className="flex bg-gray-50 border-b border-gray-200">
           {columns.map((col, i) => (
             <div
               key={col.key}
-              className={`px-3 py-2 text-gray-500 font-medium flex items-center gap-1 cursor-pointer hover:text-gray-800 ${sortKey===col.key?'text-blue-500':''}`}
-              style={{width: col.width, minWidth: col.width, position: 'relative'}}
+              className={`px-3 py-2 text-gray-500 font-medium flex items-center gap-1 cursor-pointer hover:text-gray-800 ${sortKey === col.key ? 'text-blue-500' : ''}`}
+              style={{ width: col.width, minWidth: col.width, position: 'relative' }}
               draggable
               onDragStart={() => setDragSrc(i)}
               onDragOver={e => e.preventDefault()}
               onDrop={() => {
                 const newCols = [...columns]
-                const tmp = newCols[dragSrc]; newCols[dragSrc]=newCols[i]; newCols[i]=tmp
+                const tmp = newCols[dragSrc]; newCols[dragSrc] = newCols[i]; newCols[i] = tmp
                 setColumns(newCols); setDragSrc(null)
               }}
               onClick={() => {
-                if (col.key==='dl') return
-                if (sortKey===col.key) setSortDir(d => d*-1)
+                if (sortKey === col.key) setSortDir(d => d * -1)
                 else { setSortKey(col.key); setSortDir(1) }
               }}
             >
               {col.label}
-              {col.key!=='dl' && <span className="text-xs text-gray-300">{sortKey===col.key ? (sortDir===1?'▲':'▼') : '⇅'}</span>}
-              <div
-                style={{position:'absolute', right:0, top:0, bottom:0, width:'4px', cursor:'col-resize', background:'transparent'}}
-                onMouseDown={e => startResize(e, i)}
-                onClick={e => e.stopPropagation()}
-              />
+              <span className="text-xs text-gray-300">{sortKey === col.key ? (sortDir === 1 ? '▲' : '▼') : '⇅'}</span>
+              <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '4px', cursor: 'col-resize', background: 'transparent' }}
+                onMouseDown={e => startResize(e, i)} onClick={e => e.stopPropagation()} />
             </div>
           ))}
         </div>
-        {[...files].sort((a,b) => sortKey&&sortKey!=='dl' ? (a[sortKey]>b[sortKey]?sortDir:-sortDir) : 0).map(file => (
-          <div key={file.id} 
-            className={`flex items-center cursor-pointer ${selectedFile?.id === file.id ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
-            onClick={() => { setSelectedFile(file); previewFile(file) }}
-          >
-            {columns.map(col => (
-              <div key={col.key} className="px-3 py-2 overflow-hidden text-ellipsis whitespace-nowrap" style={{width: col.width, minWidth: col.width}}>
-                {col.key==='name' && <span className="flex items-center gap-2"><span>{getIcon(file.content_type)}</span><span>{file.filename}</span></span>}
-                {col.key==='date' && <span className="text-gray-500">{file.uploaded_at?.slice(0,19).replace('T',' ')}</span>}
-                {col.key==='type' && <span className="text-gray-500">{getTypeName(file.content_type)}</span>}
-                {col.key==='dl' && <button className="border border-gray-300 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 flex items-center gap-1" onClick={(e) => { e.stopPropagation(); downloadFile(file.id, file.filename) }}>↓ 받기</button>}
-              </div>
-            ))}
-          </div>
-        ))}
+        <DragSelectContainer items={sortedFiles} selectedIds={selectedIds} setSelectedIds={setSelectedIds}>
+          {sortedFiles.map((file, idx) => (
+            <div
+              key={file.id}
+              data-row data-id={file.id}
+              className={`flex items-center cursor-pointer border-b border-gray-100 ${selectedIds.includes(file.id) ? 'bg-blue-100' : 'hover:bg-gray-50'}`}
+              onClick={e => {
+                handleClick(e, file.id, idx)
+                if (file.content_type?.includes('image')) setPreview({ url: file.url, filename: file.filename })
+                else setPreview(null)
+              }}
+            >
+              {columns.map(col => (
+                <div key={col.key} className="px-3 py-2 overflow-hidden text-ellipsis whitespace-nowrap" style={{ width: col.width, minWidth: col.width }}>
+                  {col.key === 'name' && <span className="flex items-center gap-2"><span>{getIcon(file.content_type)}</span><span>{file.filename}</span></span>}
+                  {col.key === 'date' && <span className="text-gray-500">{file.uploaded_at?.slice(0, 19).replace('T', ' ')}</span>}
+                  {col.key === 'type' && <span className="text-gray-500">{getTypeName(file.content_type)}</span>}
+                </div>
+              ))}
+            </div>
+          ))}
+        </DragSelectContainer>
       </div>
       {preview && (
         <div className="mt-4 bg-white rounded-lg border border-gray-200 p-4">
