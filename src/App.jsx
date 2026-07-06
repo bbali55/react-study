@@ -123,50 +123,57 @@ function DragSelectContainer({ children, items, selectedIds, setSelectedIds }) {
   const [box, setBox] = useState(null)
 
   function onMouseDown(e) {
-    if (e.button !== 0) return
-    const rect = containerRef.current.getBoundingClientRect()
-    dragBox.current = { startX: e.clientX - rect.left, startY: e.clientY - rect.top }
-    setBox(null)
+  if (e.button !== 0) return
+  const rect = containerRef.current.getBoundingClientRect()
+  const startX = e.clientX - rect.left
+  const startY = e.clientY - rect.top
+  dragBox.current = { startX, startY }
+  setBox(null)
+  let moved = false
 
-    function onMove(e) {
-      const r = containerRef.current.getBoundingClientRect()
-      const cur = { x: e.clientX - r.left, y: e.clientY - r.top }
-      const b = {
-        left: Math.min(dragBox.current.startX, cur.x),
-        top: Math.min(dragBox.current.startY, cur.y),
-        width: Math.abs(cur.x - dragBox.current.startX),
-        height: Math.abs(cur.y - dragBox.current.startY),
+  function onMove(e) {
+    const r = containerRef.current.getBoundingClientRect()
+    const cur = { x: e.clientX - r.left, y: e.clientY - r.top }
+    const dx = Math.abs(cur.x - dragBox.current.startX)
+    const dy = Math.abs(cur.y - dragBox.current.startY)
+    if (!moved && dx < 5 && dy < 5) return
+    moved = true
+    const b = {
+      left: Math.min(dragBox.current.startX, cur.x),
+      top: Math.min(dragBox.current.startY, cur.y),
+      width: Math.abs(cur.x - dragBox.current.startX),
+      height: Math.abs(cur.y - dragBox.current.startY),
+    }
+    setBox(b)
+
+    const rows = containerRef.current.querySelectorAll('[data-row]')
+    const selected = []
+    rows.forEach(row => {
+      const rr = row.getBoundingClientRect()
+      const cr = containerRef.current.getBoundingClientRect()
+      const rowLeft = rr.left - cr.left
+      const rowTop = rr.top - cr.top
+      const rowRight = rowLeft + rr.width
+      const rowBottom = rowTop + rr.height
+      const boxRight = b.left + b.width
+      const boxBottom = b.top + b.height
+      if (rowLeft < boxRight && rowRight > b.left && rowTop < boxBottom && rowBottom > b.top) {
+        selected.push(Number(row.dataset.id))
       }
-      setBox(b)
-
-      const rows = containerRef.current.querySelectorAll('[data-row]')
-      const selected = []
-      rows.forEach(row => {
-        const rr = row.getBoundingClientRect()
-        const cr = containerRef.current.getBoundingClientRect()
-        const rowLeft = rr.left - cr.left
-        const rowTop = rr.top - cr.top
-        const rowRight = rowLeft + rr.width
-        const rowBottom = rowTop + rr.height
-        const boxRight = b.left + b.width
-        const boxBottom = b.top + b.height
-        if (rowLeft < boxRight && rowRight > b.left && rowTop < boxBottom && rowBottom > b.top) {
-          selected.push(Number(row.dataset.id))
-        }
-      })
-      setSelectedIds(selected)
-    }
-
-    function onUp() {
-      setBox(null)
-      dragBox.current = null
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
+    })
+    setSelectedIds(selected)
   }
+
+  function onUp() {
+    setBox(null)
+    dragBox.current = null
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+  }
+
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+}
 
   return (
     <div ref={containerRef} style={{ position: 'relative', userSelect: 'none' }} onMouseDown={onMouseDown}>
